@@ -1,0 +1,413 @@
+<!doctype html>
+  <html lang="pt-BR">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b100d">
+  <title>Controle · Caça às Moedas</title>
+<script src="https://unpkg.com/mqtt@5.16.1/dist/mqtt.min.js"></script>
+<style>
+  :root {
+  --fundo: #0b100d;
+--painel: #141c17;
+--linha: #26332b;
+--texto: #e9f3ec;
+  --suave: #93a69a;
+--moeda: #f5c542;
+  --j1: #ff6262;
+  --j2: #4fa6ff;
+--ok: #4ade80;
+--erro: #f87171;
+  --cor: var(--j1);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; }
+body {
+  background: var(--fundo);
+color: var(--texto);
+font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+-webkit-tap-highlight-color: transparent;
+}
+body.jogador-2 { --cor: var(--j2); }
+main {
+  max-width: 440px;
+margin: 0 auto;
+padding: max(20px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+min-height: 100%;
+display: flex;
+flex-direction: column;
+gap: 20px;
+}
+header .sobre {
+margin: 0;
+color: var(--suave);
+font-size: 13px;
+letter-spacing: .08em;
+text-transform: uppercase;
+}
+h1 { margin: 2px 0 0; font-size: 28px; letter-spacing: -.01em; }
+h1 span { color: var(--moeda); }
+section { display: flex; flex-direction: column; gap: 16px; }
+label.campo { display: flex; flex-direction: column; gap: 6px; color: var(--suave); font-size: 14px; }
+input {
+  font: inherit;
+color: var(--texto);
+background: var(--painel);
+border: 1px solid var(--linha);
+border-radius: 12px;
+padding: 12px 14px;
+}
+input:focus { outline: 2px solid var(--moeda); outline-offset: 1px; }
+.rotulo { margin: 4px 0 -6px; color: var(--suave); font-size: 14px; }
+.jogadores { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+button {
+  font: inherit;
+color: var(--texto);
+background: var(--painel);
+border: 1px solid var(--linha);
+border-radius: 14px;
+padding: 14px;
+cursor: pointer;
+}
+button:active { transform: scale(.98); }
+.jogador { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px 10px; font-weight: 600; }
+.jogador[aria-pressed="true"] { border-color: var(--c); box-shadow: 0 0 0 1px var(--c) inset; background: color-mix(in srgb, var(--c) 12%, var(--painel)); }
+.jogador.j1 { --c: var(--j1); }
+.jogador.j2 { --c: var(--j2); }
+.icone { width: 26px; height: 26px; border-radius: 4px; border: 4px solid var(--c); }
+.icone.cheio { background: var(--c); }
+.principal {
+  background: var(--moeda);
+color: #1d1600;
+border: none;
+font-weight: 700;
+font-size: 18px;
+padding: 16px;
+}
+.link { background: none; border: none; color: var(--suave); text-decoration: underline; padding: 4px; font-size: 14px; }
+.dica { margin: 0; color: var(--suave); font-size: 14px; }
+
+.status { display: flex; gap: 8px; flex-wrap: wrap; }
+.pilula {
+  display: inline-flex; align-items: center; gap: 6px;
+font-size: 13px; padding: 5px 10px; border-radius: 999px;
+background: var(--painel); border: 1px solid var(--linha); color: var(--suave);
+}
+.pilula::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--suave); }
+.pilula.ok { color: var(--texto); }
+.pilula.ok::before { background: var(--ok); }
+.pilula.erro::before { background: var(--erro); }
+.pilula.espera::before { background: var(--moeda); animation: pisca 1s infinite; }
+@keyframes pisca { 50% { opacity: .2; } }
+
+.placar {
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+background: var(--painel); border: 1px solid var(--linha); border-radius: 16px; padding: 14px 16px;
+}
+.placar div { display: flex; flex-direction: column; align-items: center; }
+.placar small { color: var(--suave); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.placar strong { font: 700 34px/1.1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.placar .eu strong { color: var(--cor); }
+.placar .tempo strong { font-size: 22px; color: var(--moeda); }
+.placar .tempo small { text-transform: none; letter-spacing: 0; }
+
+.nivel {
+  position: relative;
+width: min(78vw, 280px);
+aspect-ratio: 1;
+margin: 0 auto;
+border-radius: 50%;
+background: radial-gradient(circle, #19241d 0 60%, #111813 100%);
+border: 1px solid var(--linha);
+touch-action: none;
+user-select: none;
+}
+.nivel::before, .nivel::after { content: ""; position: absolute; background: var(--linha); }
+.nivel::before { left: 50%; top: 12%; bottom: 12%; width: 1px; }
+.nivel::after { top: 50%; left: 12%; right: 12%; height: 1px; }
+.zona { position: absolute; inset: 45%; border: 1px dashed var(--linha); border-radius: 50%; }
+.bolha {
+  position: absolute; left: 50%; top: 50%;
+width: 44px; height: 44px; margin: -22px 0 0 -22px;
+border-radius: 9px; border: 7px solid var(--cor);
+transition: transform 60ms linear;
+z-index: 1;
+}
+body.jogador-1 .bolha { background: var(--cor); }
+.valores { margin: -6px 0 0; text-align: center; color: var(--suave); font: 14px ui-monospace, Menlo, Consolas, monospace; }
+.aviso { margin: 0; padding: 10px 12px; border-radius: 12px; background: #2a2410; color: #f3dd9b; font-size: 14px; }
+.acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: auto; }
+.acoes .forte { border-color: var(--cor); }
+.topico { margin: 0; text-align: center; color: var(--suave); font-size: 12px; word-break: break-all; }
+
+.girar {
+  position: fixed; inset: 0; display: none; place-items: center; text-align: center; padding: 24px;
+background: var(--fundo); z-index: 10; font-size: 18px;
+}
+@media (orientation: landscape) and (max-height: 500px) { .girar { display: grid; } }
+</style>
+  </head>
+  <body class="jogador-1">
+  <main>
+  <header>
+  <p class="sobre">Controle por giroscópio · Pico W + MQTT</p>
+  <h1>Caça às <span>Moedas</span></h1>
+</header>
+
+<section id="tela-config">
+<label class="campo">Sala (igual à do código do Pico)
+  <input id="sala" autocomplete="off" autocapitalize="off" spellcheck="false">
+  </label>
+  <p class="rotulo">Escolha seu jogador</p>
+<div class="jogadores">
+<button class="jogador j1" data-j="1" aria-pressed="true"><span class="icone cheio"></span>Jogador 1</button>
+  <button class="jogador j2" data-j="2" aria-pressed="false"><span class="icone"></span>Jogador 2</button>
+  </div>
+  <button id="comecar" class="principal">Começar</button>
+  <p class="dica">Segure o celular em pé, numa posição confortável. Ao começar, essa posição vira o "zero". Incline para mover seu quadrado.</p>
+  <button id="compartilhar" class="link">Compartilhar o link desta sala</button>
+  </section>
+
+  <section id="tela-jogo" hidden>
+  <div class="status" aria-live="polite">
+  <span id="st-broker" class="pilula espera">Broker</span>
+  <span id="st-pico" class="pilula">Pico</span>
+  </div>
+  <div class="placar">
+  <div class="eu"><small>Você</small><strong id="pts-eu">0</strong></div>
+  <div class="tempo"><strong id="tempo">--</strong><small id="fase">aguardando o Pico</small></div>
+<div><small>Rival</small><strong id="pts-rival">0</strong></div>
+</div>
+<div id="nivel" class="nivel" aria-label="Inclinação atual"><div class="zona"></div><div id="bolha" class="bolha"></div></div>
+  <p class="valores">x <b id="vx">0</b> · y <b id="vy">0</b></p>
+  <p id="aviso-sensor" class="aviso" hidden>Giroscópio não disponível aqui. Arraste o quadrado no círculo ou use as setas do teclado (ou W A S D).</p>
+  <div class="acoes">
+  <button id="calibrar" class="forte">Calibrar</button>
+  <button id="sair">Trocar jogador</button>
+  </div>
+  <p id="topico" class="topico"></p>
+  </section>
+  </main>
+  <div class="girar">Use o celular na vertical para jogar.</div>
+
+<script>
+// ===================== Configuração =====================
+const BROKER_URL = 'wss://broker.hivemq.com:8884/mqtt'; // mesmo broker do Pico (lá ele usa a porta 1883)
+const SALA_PADRAO = 'ifsp-sms10-marcelo';                // igual à variável SALA do main.py
+const MAX_GRAUS = 25;   // inclinação (graus) que vale 100%
+const ENVIO_MS = 100;   // envia 10 vezes por segundo
+
+// ===================== Estado =====================
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+let sala = params.get('sala') || lerLocal('sala') || SALA_PADRAO;
+let jogador = Number(params.get('j') || lerLocal('jogador') || 1) === 2 ? 2 : 1;
+
+let cliente = null;
+let leitura = null;          // última leitura do sensor {beta, gamma}
+let zero = { beta: 0, gamma: 0 };
+let manual = null;           // {x, y} quando controla com o dedo ou teclado
+let x = 0, y = 0;
+let timerEnvio = null;
+let ultimoPlacar = 0;
+let faseAnterior = '';
+let meusPontos = 0;
+let telaLigada = null;
+
+const topicoControle = () => `sms10/${sala}/controle/${jogador}`;
+const topicoPlacar = () => `sms10/${sala}/placar`;
+const limitar = (v) => Math.max(-100, Math.min(100, v));
+
+function lerLocal(chave) { try { return localStorage.getItem(chave); } catch { return null; } }
+function salvarLocal(chave, valor) { try { localStorage.setItem(chave, valor); } catch {} }
+function vibrar(padrao) { try { navigator.vibrate?.(padrao); } catch {} }
+
+// ===================== Tela de configuração =====================
+$('sala').value = sala;
+escolherJogador(jogador);
+
+document.querySelectorAll('.jogador').forEach((botao) =>
+botao.addEventListener('click', () => escolherJogador(Number(botao.dataset.j))));
+
+function escolherJogador(n) {
+jogador = n;
+document.body.className = `jogador-${n}`;
+document.querySelectorAll('.jogador').forEach((b) =>
+b.setAttribute('aria-pressed', String(Number(b.dataset.j) === n)));
+}
+
+$('compartilhar').addEventListener('click', async () => {
+const s = $('sala').value.trim() || SALA_PADRAO;
+const url = `${location.origin}${location.pathname}?sala=${encodeURIComponent(s)}`;
+try {
+if (navigator.share) await navigator.share({ title: 'Caça às Moedas', url });
+else { await navigator.clipboard.writeText(url); $('compartilhar').textContent = 'Link copiado!'; }
+} catch {}
+});
+
+$('comecar').addEventListener('click', async () => {
+sala = $('sala').value.trim() || SALA_PADRAO;
+salvarLocal('sala', sala);
+salvarLocal('jogador', jogador);
+
+// iPhone: a permissão do sensor precisa ser pedida dentro do toque no botão
+if (typeof DeviceOrientationEvent !== 'undefined' &&
+typeof DeviceOrientationEvent.requestPermission === 'function') {
+try { await DeviceOrientationEvent.requestPermission(); } catch {}
+}
+window.addEventListener('deviceorientation', aoOrientar);
+setTimeout(() => { if (!leitura) $('aviso-sensor').hidden = false; }, 1500);
+
+$('tela-config').hidden = true;
+$('tela-jogo').hidden = false;
+$('topico').textContent = `publicando em ${topicoControle()}`;
+conectar();
+manterTelaLigada();
+timerEnvio = setInterval(enviar, ENVIO_MS);
+desenharBolha();
+});
+
+$('sair').addEventListener('click', () => {
+clearInterval(timerEnvio);
+if (cliente) { cliente.publish(topicoControle(), '0,0'); cliente.end(); cliente = null; }
+window.removeEventListener('deviceorientation', aoOrientar);
+$('tela-jogo').hidden = true;
+$('tela-config').hidden = false;
+});
+
+$('calibrar').addEventListener('click', () => {
+if (leitura) zero = { ...leitura };
+vibrar(30);
+atualizar();
+});
+
+// ===================== Sensor de orientação =====================
+function aoOrientar(e) {
+if (e.beta == null || e.gamma == null) return;
+if (!leitura) zero = { beta: e.beta, gamma: e.gamma };   // primeira leitura vira o zero
+leitura = { beta: e.beta, gamma: e.gamma };
+$('aviso-sensor').hidden = true;
+atualizar();
+}
+
+function atualizar() {
+if (manual) { x = manual.x; y = manual.y; }
+else if (leitura) {
+x = limitar(Math.round((leitura.gamma - zero.gamma) / MAX_GRAUS * 100)); // esquerda/direita
+y = limitar(Math.round((leitura.beta - zero.beta) / MAX_GRAUS * 100));   // frente/trás
+} else { x = 0; y = 0; }
+desenharBolha();
+}
+
+function desenharBolha() {
+const nivel = $('nivel'), bolha = $('bolha');
+const raio = (nivel.clientWidth - bolha.offsetWidth) / 2;
+bolha.style.transform = `translate(${x / 100 * raio}px, ${y / 100 * raio}px)`;
+$('vx').textContent = x;
+$('vy').textContent = y;
+}
+
+// ===================== Sem giroscópio: dedo/mouse e teclado =====================
+const nivel = $('nivel');
+function arrastar(ev) {
+const r = nivel.getBoundingClientRect(), meio = r.width / 2;
+manual = {
+x: limitar(Math.round((ev.clientX - r.left - meio) / meio * 100)),
+y: limitar(Math.round((ev.clientY - r.top - meio) / meio * 100)),
+};
+atualizar();
+}
+nivel.addEventListener('pointerdown', (ev) => { nivel.setPointerCapture(ev.pointerId); arrastar(ev); });
+nivel.addEventListener('pointermove', (ev) => { if (nivel.hasPointerCapture(ev.pointerId)) arrastar(ev); });
+['pointerup', 'pointercancel'].forEach((t) => nivel.addEventListener(t, () => { manual = null; atualizar(); }));
+
+const SETAS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+a: [-1, 0], d: [1, 0], w: [0, -1], s: [0, 1] };
+const apertadas = new Set();
+function teclado(ev, apertou) {
+const tecla = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+if ($('tela-jogo').hidden || !SETAS[tecla]) return;
+ev.preventDefault();
+apertou ? apertadas.add(tecla) : apertadas.delete(tecla);
+let kx = 0, ky = 0;
+apertadas.forEach((t) => { kx += SETAS[t][0]; ky += SETAS[t][1]; });
+manual = apertadas.size ? { x: limitar(kx * 100), y: limitar(ky * 100) } : null;
+atualizar();
+}
+addEventListener('keydown', (ev) => teclado(ev, true));
+addEventListener('keyup', (ev) => teclado(ev, false));
+
+// ===================== MQTT =====================
+function conectar() {
+mudarStatus('st-broker', 'espera', 'Conectando ao broker');
+cliente = mqtt.connect(BROKER_URL, {
+clientId: `ctrl-${jogador}-${Math.random().toString(16).slice(2, 10)}`,
+clean: true, keepalive: 30, reconnectPeriod: 2000, connectTimeout: 8000,
+});
+cliente.on('connect', () => {
+mudarStatus('st-broker', 'ok', 'Broker conectado');
+cliente.subscribe(topicoPlacar());
+});
+cliente.on('reconnect', () => mudarStatus('st-broker', 'espera', 'Reconectando'));
+cliente.on('offline', () => mudarStatus('st-broker', 'erro', 'Sem conexão'));
+cliente.on('error', () => mudarStatus('st-broker', 'erro', 'Erro no broker'));
+cliente.on('message', (topico, msg) => { if (topico === topicoPlacar()) aoPlacar(String(msg)); });
+}
+
+// Envia quando a inclinação muda (até 10x/s) e repete a cada 0,4 s se ficar parada,
+// para não congestionar o gateway gratuito do Wokwi
+let ultimoTexto = '', ultimoEnvio = 0;
+function enviar() {
+if (!cliente?.connected) return;
+const texto = `${x},${y}`;
+const agora = Date.now();
+if (texto !== ultimoTexto || agora - ultimoEnvio >= 400) {
+cliente.publish(topicoControle(), texto);
+ultimoTexto = texto;
+ultimoEnvio = agora;
+}
+}
+
+// Placar enviado pelo Pico: "fase;tempo;pontos J1;pontos J2"
+function aoPlacar(texto) {
+const [fase, tempo, p1, p2] = texto.split(';');
+ultimoPlacar = Date.now();
+const eu = Number(jogador === 1 ? p1 : p2);
+const rival = Number(jogador === 1 ? p2 : p1);
+if (fase === 'jogando' && eu > meusPontos) vibrar(40);
+if (fase === 'fim' && faseAnterior !== 'fim') vibrar([80, 60, 80]);
+meusPontos = eu;
+faseAnterior = fase;
+$('pts-eu').textContent = eu;
+$('pts-rival').textContent = rival;
+$('tempo').textContent = fase === 'jogando' ? `${tempo}s` : '--';
+$('fase').textContent = {
+  espera: 'aperte o botão no Pico',
+  jogando: 'valendo!',
+  fim: eu > rival ? 'você venceu!' : eu < rival ? 'você perdeu' : 'empate',
+  }[fase] || fase;
+}
+
+setInterval(() => {
+const online = Date.now() - ultimoPlacar < 4000;   // tolera o atraso do gateway do Wokwi
+mudarStatus('st-pico', online ? 'ok' : 'erro', online ? 'Pico online' : 'Pico offline');
+}, 500);
+
+function mudarStatus(id, classe, texto) {
+const el = $(id);
+el.className = `pilula ${classe}`;
+el.textContent = texto;
+}
+
+// ===================== Tela sempre ligada durante o jogo =====================
+async function manterTelaLigada() {
+try { telaLigada = await navigator.wakeLock?.request('screen'); } catch {}
+}
+document.addEventListener('visibilitychange', () => {
+if (document.visibilityState === 'visible' && !$('tela-jogo').hidden) manterTelaLigada();
+if (document.visibilityState === 'hidden' && cliente?.connected) cliente.publish(topicoControle(), '0,0');
+});
+</script>
+</body>
+</html>
